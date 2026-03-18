@@ -1,114 +1,173 @@
-# news_hotspot
+# 新闻热词
 
-将 [news-zhcn.txt](/Users/lishuyu/Codes/news_hotspot/news-zhcn.txt) 中的中文新闻摘要解析后导入 SQLite。
+中文新闻词频可视化平台。从原始新闻文本提取热词，按时间轴展示累积词频变化。
 
-当前仓库包含：
-- [news-zhcn.txt](/Users/lishuyu/Codes/news_hotspot/news-zhcn.txt)：原始文本数据。
-- [import_news_zhcn_to_sqlite.py](/Users/lishuyu/Codes/news_hotspot/import_news_zhcn_to_sqlite.py)：导入脚本。
-- [news_zhcn.sqlite](/Users/lishuyu/Codes/news_hotspot/news_zhcn.sqlite)：已生成的 SQLite 数据库。
+## 核心功能
 
-## 数据说明
+### 📊 词频时间轴可视化
 
-原始文件并不是完全规整的“每天固定 5 条”格式，实际存在这些情况：
-- 同一天有多个生成批次。
-- 部分早期批次超过 5 条。
-- 少数日期不足 5 条。
-- 区间内存在缺失日期。
+**[word_freq_viz.html](word_freq_viz.html)** — 交互式 Canvas 词云
 
-因此数据库同时保留了：
-- 原始批次数据
-- 拆分后的新闻条目
-- 每天的“首选批次”
-- 最终便于消费的“每日新闻”视图
+- **累积词频** — 每月从第一个月到当月的累积词频，词大小动态变化
+- **自动播放** — 时间轴逐月动画，支持 3 档变速 (3s/2s/1.2s/0.8s)
+- **手动导航** — 点击月份圆点跳转，方向键切换，空格播放/暂停
+- **实时提示** — hover 词显示累积频次
+- **设计** — 报纸编辑室风格，墨黑底+纸张质感，铁锈红配色
 
-## 重新导入
-
-```bash
-python3 import_news_zhcn_to_sqlite.py
+**快捷键：**
+```
+Space/K  — 播放/暂停
+←/→      — 切换月份
+1-9      — 跳到第 N 个月
+Speed    — 循环变速
 ```
 
-可选参数：
+## 技术栈
 
-```bash
-python3 import_news_zhcn_to_sqlite.py --input news-zhcn.txt --output news_zhcn.sqlite
+### 前端
+- **wordcloud2.js** — Canvas 像素级碰撞检测词云布局
+- **Vanilla JS** — 无框架，动画 + 交互
+- **Google Fonts** — Ma Shan Zheng (毛笔体标题) + Noto Serif SC (内文)
+
+### 数据处理
+- **jieba** — 中文分词
+- **SQLite** — 新闻存储 (1024 条精选新闻)
+- **Python** — 词频提取与累积统计
+
+## 数据流
+
+```
+news-zhcn.txt
+    ↓ (parse & import)
+news_zhcn.sqlite (daily_news_selected)
+    ↓ (jieba tokenize + stopwords filter)
+word_freq_cumulative.json (9 months snapshots)
+    ↓ (inject into HTML)
+word_freq_viz.html (interactive canvas cloud)
 ```
 
-## SQLite 结构
+## 文件说明
 
-### `source_batches`
+| 文件 | 说明 |
+|------|------|
+| `word_freq_viz.html` | 交互式词云可视化（主页面） |
+| `word_freq_cumulative.json` | 月度累积词频快照（数据源） |
+| `news_zhcn.sqlite` | SQLite 数据库 (1024 条新闻) |
+| `import_news_zhcn_to_sqlite.py` | 新闻导入脚本 |
+| `news-zhcn.txt` | 原始新闻文本 |
 
-保存原始批次：
-- `generated_at_utc`：批次时间戳
-- `news_date`：按批次时间戳截出的日期
-- `model`：生成模型
-- `run_number`：批次编号
-- `raw_header` / `raw_body`：原始文本
-- `item_count`：该批次识别出的新闻条数
+## 数据统计
 
-### `news_items`
+- **时间范围** — 2024-12-08 至 2025-08-03 (9 个月)
+- **新闻总数** — 1024 条 (日均精选)
+- **独立热词** — 150 个 (top 词)
+- **最高词频** — 特朗普 (498 次)
 
-保存拆分后的新闻项：
-- `news_date`
-- `item_index`
-- `title`
-- `summary`
-- `raw_text`
+### 词频 TOP 10
 
-### `date_coverage`
+| 排名 | 词 | 累积频次 |
+|------|-----|---------|
+| 1 | 特朗普 | 498 |
+| 2 | 美国 | 410 |
+| 3 | 总统 | 226 |
+| 4 | 关税 | 155 |
+| 5 | 以色列 | 152 |
+| 6 | 关于 | 150 |
+| 7 | 乌克兰 | 147 |
+| 8 | 政治 | 133 |
+| 9 | 广泛 | 132 |
+| 10 | 重大 | 128 |
 
-保存日期覆盖情况：
-- `batch_count`：当天批次数
-- `selected_batch_id`：当天首选批次
-- `selected_item_count`：最终选中的条数
-- `has_exact_five_batch`：是否存在恰好 5 条的批次
-- `missing`：该日期是否缺失
+## 快速开始
 
-### `preferred_batches`
-
-每天选一个首选批次，规则为：
-1. 优先选择恰好 5 条的批次
-2. 若没有 5 条批次，选择当天最新批次
-
-### `daily_news_selected`
-
-面向直接查询的最终视图：
-- 每天输出最多 5 条新闻
-- 如果首选批次多于 5 条，只取前 5 条
-- 如果首选批次少于 5 条，则保留实际条数
-
-## 常用查询
-
-查询某天的最终新闻：
+### 1. 查看可视化
 
 ```bash
-sqlite3 news_zhcn.sqlite "SELECT news_date, rank, title, summary FROM daily_news_selected WHERE news_date='2025-08-03';"
+open word_freq_viz.html
 ```
 
-查询缺失日期：
+或用浏览器直接打开文件。
+
+### 2. 重新生成词频数据
 
 ```bash
-sqlite3 news_zhcn.sqlite "SELECT news_date FROM date_coverage WHERE missing=1 ORDER BY news_date;"
+source .venv/bin/activate
+python3 -c "
+import sqlite3, jieba, json, re
+from collections import Counter, defaultdict
+
+# ... (词频提取脚本)
+"
 ```
 
-查询存在多个批次的日期：
+### 3. 查询新闻数据
 
 ```bash
-sqlite3 news_zhcn.sqlite "SELECT news_date, batch_count FROM date_coverage WHERE batch_count > 1 ORDER BY news_date;"
+sqlite3 news_zhcn.sqlite "SELECT news_date, title FROM daily_news_selected LIMIT 10;"
 ```
 
-查询原始批次：
+## 项目结构
 
+```
+.
+├── word_freq_viz.html           # 词云可视化 (主文件)
+├── word_freq_cumulative.json    # 数据源
+├── news_zhcn.sqlite             # 新闻数据库
+├── import_news_zhcn_to_sqlite.py # 导入脚本
+├── news-zhcn.txt                # 原始文本
+└── README.md                     # 本文件
+```
+
+## 设计说明
+
+### 色彩方案
+- **背景** — `#0e0e0c` (深黑墨水)
+- **文字** — `#f0ebe2` (米色纸张)
+- **强调** — `#c23616` (铁锈红/朱砂)
+- **辅助** — `#b8860b` (古金) / `#2e6b62` (深青)
+
+### 排版
+- **标题** — Ma Shan Zheng (手写毛笔体，14-18号)
+- **内文** — Noto Serif SC (衬线宋体)
+- **数据** — Source Code Pro (等宽代码体)
+
+### 动画
+- 词云过渡 — 0.7s cubic-bezier 字体缩放
+- 时间轴 — 0.35s ease 进度条
+- Hover — 0.12s 提示框淡入
+
+## 词频处理
+
+### 分词
+- **工具** — jieba 中文分词库
+- **参数** — 精确模式，最小词长 2 字
+
+### 停用词过滤
+过滤常见虚词、动词、介词等 100+ 个停用词，保留核心名词与关键词。
+
+### 累积统计
+每个月份快照包含从第一月到当月的累积词频，展示热点话题的演变。
+
+## 开发
+
+### 环境
 ```bash
-sqlite3 news_zhcn.sqlite "SELECT batch_id, news_date, generated_at_utc, item_count FROM source_batches ORDER BY generated_at_utc LIMIT 20;"
+uv venv
+source .venv/bin/activate
+uv pip install jieba
 ```
 
-## 当前导入结果
+### 更新词频数据
+编辑 `word_freq_cumulative.json` 的生成脚本，重新运行：
+```bash
+python3 scripts/extract_words.py
+```
 
-基于当前 [news-zhcn.txt](/Users/lishuyu/Codes/news_hotspot/news-zhcn.txt) 的导入结果：
-- 217 个原始批次
-- 1193 条拆分后的新闻
-- 205 个有数据的日期
-- 34 个缺失日期
+### 修改样式
+编辑 `word_freq_viz.html` 的 `<style>` 块，调整颜色、字体、布局。
 
-时间范围：
-- `2024-12-08` 到 `2025-08-03`
+---
+
+**Last Update** — 2025-03-18
+**Data Range** — 2024-12-08 to 2025-08-03
+**Built with** — wordcloud2.js + Canvas + jieba
